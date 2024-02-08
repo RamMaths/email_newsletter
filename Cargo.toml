@@ -1,0 +1,11 @@
+[package]
+name = "email_newsletter"
+version = "0.1.0"
+edition = "2021"
+
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-arg=-fuse-ld=/opt/homebrew/opt/llvm/bin/ld64.lld"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
