@@ -2,6 +2,9 @@ use std::net::TcpListener;
 use sqlx::{ PgPool, PgConnection, Connection, Executor };
 use uuid::Uuid;
 use email_newsletter::configuration::DatabaseSettings;
+use std::sync::Once;
+
+static INIT: Once = Once::new();
 
 
 struct TestApp {
@@ -52,6 +55,9 @@ async fn subscribe_returns_200() {
         .await
         .expect("Failed to fetch saved subscription");
 
+    println!("{}", saved.email);
+    println!("{}", saved.name);
+
     assert_eq!(saved.email, "ursula_le_guin@gmail.com");
     assert_eq!(saved.name, "le guin");
 }
@@ -86,6 +92,9 @@ async fn subscribe_returns_200() {
 // }
 
 async fn spawn_app() -> TestApp {
+    INIT.call_once(|| {
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    });
     let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind random port");
     let port = listener.local_addr().unwrap().port();
     let address = format!("http://127.0.0.1:{}", port);
