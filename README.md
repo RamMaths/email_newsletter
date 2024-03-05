@@ -1,6 +1,6 @@
 # EMAIL NEWSLETTER
 
-I recently finished the rust programming language book, and since I liked the language I am starting to read a book about web development with this language. I will keep track of the project I will build throughout the book in this repository.
+I recently finished the rust programming language book, since I loved the language I am starting to read a book about web development with this language. I will keep track of the project I will build throughout the book in this repository.
 
 ---
 
