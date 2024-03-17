@@ -1,11 +1,33 @@
 use std::net::TcpListener;
 use sqlx::{ PgPool, PgConnection, Connection, Executor };
 use uuid::Uuid;
-use email_newsletter::configuration::DatabaseSettings;
-use std::sync::Once;
+use email_newsletter::{
+    configuration::DatabaseSettings,
+    telemetry::*
+};
+use once_cell::sync::Lazy;
 
-static INIT: Once = Once::new();
+static TRAICING: Lazy<()> = Lazy::new(|| {
+    let default_filter_level = "info".to_string();
+    let subscriber_name = "test".to_string();
 
+    if std::env::var("TEST_LOG").is_ok() {
+        let subscriber = get_subscriber(
+            subscriber_name,
+            default_filter_level,
+            std::io::stdout
+        );
+        init_subscriber(subscriber);
+    } else {
+        let subscriber = get_subscriber(
+            subscriber_name,
+            default_filter_level,
+            std::io::sink
+        );
+        init_subscriber(subscriber);
+    }
+
+});
 
 struct TestApp {
     pub address: String,
@@ -92,15 +114,14 @@ async fn subscribe_returns_200() {
 // }
 
 async fn spawn_app() -> TestApp {
-    INIT.call_once(|| {
-        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
-    });
+    Lazy::force(&TRAICING);
+
     let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind random port");
     let port = listener.local_addr().unwrap().port();
     let address = format!("http://127.0.0.1:{}", port);
+
     let mut configuration = email_newsletter::configuration::get_configuration().expect("Failed to get the configuration file");
     configuration.database.database_name = Uuid::new_v4().to_string();
-
     let db_pool = configure_database(&configuration.database).await;
 
     let server = email_newsletter::startup::run(listener, db_pool.clone()).expect("Failed to bind address");
