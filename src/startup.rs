@@ -2,13 +2,13 @@ use actix_web::{
     web,
     App, 
     HttpServer, 
-    dev::Server,
-    middleware::Logger
+    dev::Server
 };
 use sqlx::PgPool;
 use std::net::TcpListener;
 use super::routes::health_check;
 use super::routes::subscribe;
+use tracing_actix_web::TracingLogger;
 
 pub fn run(
     listener: TcpListener,
@@ -17,7 +17,7 @@ pub fn run(
     let connection = web::Data::new(connection);
     let server = HttpServer::new(move || {
         App::new()
-            .wrap(Logger::default())
+            .wrap(TracingLogger::default())
             .route("/health_check", web::get().to(health_check))
             .route("/subscriptions", web::post().to(subscribe))
             .app_data(connection.clone())

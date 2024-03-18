@@ -5,6 +5,7 @@ use email_newsletter::{
 use std::net::TcpListener;
 use sqlx::PgPool;
 use email_newsletter::telemetry::*;
+use secrecy::ExposeSecret;
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
@@ -18,7 +19,7 @@ async fn main() -> Result<(), std::io::Error> {
     let address = format!("127.0.0.1:{}", configuration.application_port);
     let listener = TcpListener::bind(&address).expect("Failed to bind the address");
     let db_pool = PgPool::connect(
-            &configuration.database.connection_string()
+            &configuration.database.connection_string().expose_secret()
         )
         .await
         .expect("Failed to connect to postgres");
