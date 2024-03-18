@@ -11,17 +11,19 @@ use secrecy::ExposeSecret;
 async fn main() -> Result<(), std::io::Error> {
     let subscriber = get_subscriber(
         "email_newsletter".to_string(),
-        "info".to_string(),
+        "debug".to_string(),
         std::io::stdout
     );
     init_subscriber(subscriber);
     let configuration = get_configuration().expect("Failed to read configuration");
-    let address = format!("127.0.0.1:{}", configuration.application_port);
+
+    println!("Application attempting to run on {}:{}", &configuration.application.host, &configuration.application.port);
+
+    let address = format!("{}:{}", &configuration.application.host, &configuration.application.port);
     let listener = TcpListener::bind(&address).expect("Failed to bind the address");
-    let db_pool = PgPool::connect(
+    let db_pool = PgPool::connect_lazy(
             &configuration.database.connection_string().expose_secret()
         )
-        .await
-        .expect("Failed to connect to postgres");
+        .expect("Failed to create Postgres connection pool");
     run(listener, db_pool)?.await
 }
