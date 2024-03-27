@@ -21,7 +21,6 @@ ENV SQLX_OFFLINE true
 # We'll use the release profile to make it faaaast
 RUN cargo build --release --bin email_newsletter
 
-
 # 3) Runtime stage ------------------------------------------------------
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app
