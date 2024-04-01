@@ -33,6 +33,9 @@ CREATE TABLE subscriptions(
    subscribed_at timestamptz NOT NULL
 );
 ```
+
+In order to migrate the script you can do `sqlx migrate run` in the terminal but for integrated test we use the `sqlx::migrate!("path/to/migrations")` macro.
+
 ## Project structure
 
 ### Health check
@@ -46,8 +49,6 @@ pub async fn health_check() -> HttpResponse {
     HttpResponse::Ok().finish()
 }
 ```
-
-In order to migrate the script you can do `sqlx migrate run` in the terminal but for integrated test we use the `sqlx::migrate!("path/to/migrations")` macro.
 
 ## Test driven development
 Manual testing is time consuming as an application gets bigger, it gets more expensive to manually check all our assumptions. Therefore I'll try to put a strong emphasis on test-driven development and continuous integration.
@@ -140,7 +141,7 @@ docker run --rm -p 8000:8000 email_newsletter | bunyan
 ```
 ### Deploying to digital Ocean
 
-We need to add some configurations while pushing the application to the cloud provider such as the github repository that is going to take in order to build the image that is going to run the instance or the database configuration. All these setting go inside the `spec.yaml` file.
+We need to add some configurations while pushing the application to the cloud provider such as the github, the database configuration, environment variables, all these setting go inside the `spec.yaml` file.
 
 ```bash
 doctl apps create --spec spec.yaml
