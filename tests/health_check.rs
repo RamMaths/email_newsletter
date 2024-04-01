@@ -89,34 +89,34 @@ async fn subscribe_returns_200() {
     assert_eq!(saved.name, "le guin");
 }
 
-// #[tokio::test]
-// async fn subscribe_returns_400() {
-//     let app = spawn_app().await;
-//     let client = reqwest::Client::new();
+#[tokio::test]
+async fn subscribe_returns_400() {
+    let app = spawn_app().await;
+    let client = reqwest::Client::new();
 
-//     let test_cases = vec![
-//         ("name=le%20guin", "missing the email"),
-//         ("email=ursula_le_guin%40gmail.com", "missing the name"),
-//         ("", "missing both name and email")
-//     ];
+    let test_cases = vec![
+        ("name=&email=ursula_le_guin%40gmail.com", "empty name"),
+        ("name=Ursula&email=", "empty email"),
+        ("name=Ursula&email=definitely-not-an-email", "invalid email")
+    ];
 
-//     for (invalid_body, error_message) in test_cases {
-//         let response = client
-//             .post(&format!("{}/subscriptions", &app.address))
-//             .header("Content-Type", "application/x-www-form-urlencoded")
-//             .body(invalid_body)
-//             .send()
-//             .await
-//             .expect("Failed to execute request");
+    for (body, error_message) in test_cases {
+        let response = client
+            .post(&format!("{}/subscriptions", &app.address))
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .body(body)
+            .send()
+            .await
+            .expect("Failed to execute request");
 
-//         assert_eq!(
-//             400,
-//             response.status().as_u16(),
-//             "The API did not fail with 400 Bad Request when the payload was {}.",
-//             error_message
-//         );
-//     }
-// }
+        assert_eq!(
+            400,
+            response.status().as_u16(),
+            "The API did not fail with 400 Bad Request when the payload was {}.",
+            error_message
+        );
+    }
+}
 
 async fn spawn_app() -> TestApp {
     Lazy::force(&TRAICING);
@@ -160,4 +160,10 @@ pub async fn configure_database(config: &DatabaseSettings) -> PgPool {
         .expect("Failed to migrate the database");
 
     connection_pool
+}
+
+#[test]
+fn dummy_fail() {
+    let result: Result<&str, &str> = Err("The app crashed due to an IO error");
+    claims::assert_ok!(result);
 }

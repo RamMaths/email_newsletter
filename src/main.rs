@@ -10,7 +10,7 @@ use email_newsletter::telemetry::*;
 async fn main() -> Result<(), std::io::Error> {
     let subscriber = get_subscriber(
         "email_newsletter".to_string(),
-        "debug".to_string(),
+        "info".to_string(),
         std::io::stdout
     );
     init_subscriber(subscriber);
