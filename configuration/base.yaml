@@ -7,3 +7,8 @@ database:
   username: "postgres"
   password: "password"
   database_name: "newsletter"
+email_client:
+  base_url: "https://bulk.api.mailtrap.io"
+  sender_email: "mailtrap@demomailtrap.com"
+  authorization_token: "26b5352acd1f3 275b3b1ac217e288202cc688c436216e"
+  timeout_milliseconds: 10000

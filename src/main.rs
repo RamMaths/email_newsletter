@@ -1,10 +1,11 @@
 use email_newsletter::{
     startup::run,
-    configuration::get_configuration
+    configuration::get_configuration,
+    telemetry::*,
+    email_client::EmailClient
 };
 use std::net::TcpListener;
 use sqlx::postgres::PgPoolOptions;
-use email_newsletter::telemetry::*;
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
@@ -16,11 +17,25 @@ async fn main() -> Result<(), std::io::Error> {
     init_subscriber(subscriber);
     let configuration = get_configuration().expect("Failed to read configuration");
 
-    println!("Application attempting to run on {}:{}", &configuration.application.host, &configuration.application.port);
-
     let address = format!("{}:{}", &configuration.application.host, &configuration.application.port);
     let listener = TcpListener::bind(&address).expect("Failed to bind the address");
+
+    //Database
     let db_pool = PgPoolOptions::new()
         .connect_lazy_with(configuration.database.with_db());
-    run(listener, db_pool)?.await
+
+    //Building an email client
+    let email_sender = configuration.email_client.sender().expect("Invalid sender email address");
+    let timeout = configuration.email_client.timeout();
+    let email_client = EmailClient::new(
+        configuration.email_client.base_url.clone(),
+        email_sender,
+        configuration.email_client.authorization_token,
+        timeout
+    );
+
+
+    println!("Application running on {}:{}", &configuration.application.host, &configuration.application.port);
+    //
+    run(listener, db_pool, email_client)?.await
 }
