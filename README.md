@@ -141,7 +141,7 @@ docker run --rm -p 8000:8000 email_newsletter | bunyan
 ```
 ### Deploying to digital Ocean
 
-We need to add some configurations while pushing the application to the cloud provider such as the github, the database configuration, environment variables, all these setting go inside the `spec.yaml` file.
+We need to add some configurations while pushing the application to the cloud provider such as the project's github repository, the database configuration, environment variables, all these setting go inside the `spec.yaml` file.
 
 ```bash
 doctl apps create --spec spec.yaml

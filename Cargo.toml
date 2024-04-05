@@ -3,11 +3,7 @@ name = "email_newsletter"
 version = "0.1.0"
 edition = "2021"
 
-[target.aarch64-apple-darwin]
-rustflags = ["-C", "link-arg=-fuse-ld=/opt/homebrew/opt/llvm/bin/ld64.lld"]
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [lib]
 path= "src/lib.rs"
 
@@ -17,7 +13,6 @@ name = "email_newsletter"
 
 [dependencies]
 actix-web = "4"
-reqwest = "0.11.24"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 serde = { version = "1", features = ["derive"] }
 config = "0.13"
@@ -34,11 +29,20 @@ serde-aux = "4"
 unicode-segmentation = "1"
 claims = "0.7"
 validator = "0.16"
+url = "2.5.0"
+serde_json = "1"
+
+[dependencies.reqwest]
+version = "0.11"
+default-features = false
+features = ["json", "rustls-tls"]
 
 [dev-dependencies]
 fake = "~2.3"
 quickcheck = "0.9.2"
 quickcheck_macros = "0.9.1"
+tokio = { version = "1", features = ["rt", "macros"] }
+wiremock = "0.5"
 
 [dependencies.sqlx] 
 version = "0.7" 
