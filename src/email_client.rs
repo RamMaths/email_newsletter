@@ -9,6 +9,7 @@ use secrecy::{
 };
 use serde_json::json;
 
+#[derive(Debug)]
 pub struct EmailClient {
     http_client: Client,
     base_url: String,
@@ -40,7 +41,8 @@ impl EmailClient {
         html_content: &str,
         text_content: &str
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let url = Url::parse(&self.base_url)?;
+        let url = Url::parse(&self.base_url)?
+            .join("/api/send")?;
 
         let request_body = json!({
             "from": {"email": self.sender.as_ref()},

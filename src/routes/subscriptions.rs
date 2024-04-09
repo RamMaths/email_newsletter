@@ -5,9 +5,12 @@ use actix_web::{
 use sqlx::PgPool;
 use chrono::Utc;
 use uuid::Uuid;
-use crate::domain::NewSubscriber;
+use crate::{
+    domain::NewSubscriber,
+    email_client::EmailClient
+};
 
-// suscribe
+// subscribe
 #[derive(serde::Deserialize)]
 pub struct FormData {
     pub email: String,
@@ -22,7 +25,7 @@ pub struct FormData {
         subscriber_name = &form.name
     )
 )]
-pub async fn subscribe(form: web::Form<FormData>, connection: web::Data<PgPool>) -> HttpResponse {
+pub async fn subscribe(form: web::Form<FormData>, connection: web::Data<PgPool>, email_client: web::Data<EmailClient>) -> HttpResponse {
     
     let new_subscriber = match form.0.try_into() {
         Ok(subscriber) => subscriber,
@@ -30,15 +33,15 @@ pub async fn subscribe(form: web::Form<FormData>, connection: web::Data<PgPool>)
     };
 
 
-    match insert_subscriber(&new_subscriber, &connection).await {
-        Ok(_) => {
-            HttpResponse::Ok().finish()
-        },
-        Err(e) => {
-            tracing::error!("Failed to execute the query: {:?}", e);
-            HttpResponse::InternalServerError().finish()
-        }
+    if insert_subscriber(&new_subscriber, &connection).await.is_err() {
+        return HttpResponse::InternalServerError().finish();
     }
+
+    if send_confirmation_email(&email_client, new_subscriber).await.is_err() {
+        return HttpResponse::InternalServerError().finish();
+    }
+
+    HttpResponse::Ok().finish()
 }
 
 #[tracing::instrument(
@@ -53,8 +56,8 @@ pub async fn subscribe(form: web::Form<FormData>, connection: web::Data<PgPool>)
 pub async fn insert_subscriber(new_subscriber: &NewSubscriber, connection: &PgPool) -> Result<(), sqlx::Error> {
     sqlx::query!(
         r#"
-        INSERT INTO subscriptions (id, email, name, subscribed_at)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO subscriptions (id, email, name, subscribed_at, status)
+        VALUES ($1, $2, $3, $4, 'pending_confirmation')
         "#,
         Uuid::new_v4(),
         new_subscriber.email.as_ref(),
@@ -70,3 +73,33 @@ pub async fn insert_subscriber(new_subscriber: &NewSubscriber, connection: &PgPo
     
     Ok(())
 }
+
+#[tracing::instrument(
+    name = "Send a confirmation email to a new subscriber",
+    skip(email_client, new_subscriber)
+)]
+pub async fn send_confirmation_email(
+    email_client: &EmailClient,
+    new_subscriber: NewSubscriber
+) -> Result<(), Box<dyn std::error::Error>> {
+
+    let confirmation_link = "https://there-is-no-such-domain.com/subscriptions/confirm";
+
+    email_client.send_email(
+        new_subscriber.email,
+        "Welcome!",
+        &format!(
+            "Welcome to out newsletter!<br />\
+            Click <a href=\"{}\">here</a> to confirm your subscription.",
+            confirmation_link
+        ),
+        &format!(
+            "Welcome to our newsletter!\nVisit {} to confirm your subscription.",
+            confirmation_link
+        )
+    )
+    .await?;
+
+    Ok(())
+}
+
