@@ -2,7 +2,7 @@ use actix_web::{
     web,
     HttpResponse
 };
-use sqlx::PgPool;
+use sqlx::{PgPool ,Transaction, Postgres, Executor};
 use chrono::Utc;
 use uuid::Uuid;
 use crate::{
@@ -22,7 +22,7 @@ pub struct FormData {
 
 #[tracing::instrument(
     name = "Adding a new subscriber",
-    skip(form, connection, email_client, base_url),
+    skip(form, pool, email_client, base_url),
     fields(
         subscriber_email = &form.email,
         subscriber_name = &form.name
@@ -30,7 +30,7 @@ pub struct FormData {
 )]
 pub async fn subscribe(
     form: web::Form<FormData>,
-    connection: web::Data<PgPool>,
+    pool: web::Data<PgPool>,
     email_client: web::Data<EmailClient>,
     base_url: web::Data<ApplicationBaseUrl>
 ) -> HttpResponse {
@@ -40,7 +40,19 @@ pub async fn subscribe(
         Err(_) => return HttpResponse::BadRequest().finish()
     };
 
-    if insert_subscriber(&new_subscriber, &connection).await.is_err() {
+    let mut transaction = match pool.begin().await {
+        Ok(transaction) => transaction,
+        Err(_) => return HttpResponse::InternalServerError().finish()
+    };
+
+    let subscriber_id = match insert_subscriber(&new_subscriber, &mut transaction).await {
+        Err(_) => return HttpResponse::InternalServerError().finish(),
+        Ok(id) => id
+    };
+
+    let subscription_token = generate_subscription_token();
+
+    if store_token(&mut transaction, subscriber_id, &subscription_token).await.is_err() {
         return HttpResponse::InternalServerError().finish();
     }
 
@@ -48,10 +60,14 @@ pub async fn subscribe(
         &email_client,
         new_subscriber,
         &base_url.0,
-        "my-token"
+        &subscription_token
     )
     .await
     .is_err() {
+        return HttpResponse::InternalServerError().finish();
+    }
+
+    if transaction.commit().await.is_err() {
         return HttpResponse::InternalServerError().finish();
     }
 
@@ -60,42 +76,41 @@ pub async fn subscribe(
 
 #[tracing::instrument(
     name="Store subscription token in the database",
-    skip(subscription_token, pool)
+    skip(subscription_token, transaction)
 )]
 pub async fn store_token (
-    pool: &PgPool,
+    transaction: &mut Transaction<'_,  Postgres>,
     subscriber_id: Uuid,
     subscription_token: &str
 ) -> Result<(), sqlx::Error> {
-    sqlx::query!(
+    let query = sqlx::query!(
         r#"INSERT INTO subscription_tokens (subscription_token, subscriber_id)
         VALUES ($1, $2)"#,
         subscription_token,
         subscriber_id
-    )
-    .execute(pool)
-    .await
-    .map_err(|e| {
-            tracing::error!("Failed to execute query: {:?}", e);
-            e
-    })?;
+    );
+
+    transaction.execute(query).await?;
 
     Ok(())
 }
 
 #[tracing::instrument(
     name = "Saving new subscriber details in the database",
-    skip(new_subscriber, connection),
+    skip(new_subscriber, transaction),
     fields(
         error_message = "",
         event_type = "[SAVING NEW SUBSCRIBER DETAILS IN THE DATABASE - EVENT]"
     ),
     err
 )]
-pub async fn insert_subscriber(new_subscriber: &NewSubscriber, connection: &PgPool) -> Result<Uuid, sqlx::Error> {
+pub async fn insert_subscriber(
+    new_subscriber: &NewSubscriber,
+    transaction: &mut Transaction<'_, Postgres>
+) -> Result<Uuid, sqlx::Error> {
     let subscriber_id = Uuid::new_v4();
 
-    sqlx::query!(
+    let query = sqlx::query!(
         r#"
         INSERT INTO subscriptions (id, email, name, subscribed_at, status)
         VALUES ($1, $2, $3, $4, 'pending_confirmation')
@@ -104,24 +119,16 @@ pub async fn insert_subscriber(new_subscriber: &NewSubscriber, connection: &PgPo
         new_subscriber.email.as_ref(),
         new_subscriber.name.as_ref(),
         Utc::now()
-    )
-    .execute(connection)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to execute the query: {}", e);
-        e
-    })?;
-    
+    );
+
+    transaction.execute(query).await?;
+
     Ok(subscriber_id)
 }
 
 #[tracing::instrument(
     name = "Send a confirmation email to a new subscriber",
     skip(email_client, new_subscriber),
-    fields(
-        error_message = "",
-        event_type = "[SEND A CONFIRMATION EMAIL TO A NEW SUBSCRIBER - EVENT]"
-    ),
     err
 )]
 pub async fn send_confirmation_email(

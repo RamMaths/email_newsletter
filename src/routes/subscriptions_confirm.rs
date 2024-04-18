@@ -15,12 +15,14 @@ pub async fn confirm(
     parameters: web::Query<Parameters>,
     pool: web::Data<PgPool>
 ) -> HttpResponse {
+
     let id = match get_subscriber_id_from_token(&pool, &parameters.subscription_token).await {
         Ok(id) => id,
         Err(_) => return HttpResponse::InternalServerError().finish()
     };
 
     match id {
+        // Non existing token
         None => return HttpResponse::Unauthorized().finish(),
         Some(id) => {
             if confirm_subscriber(&pool, id).await.is_err() {
@@ -41,7 +43,7 @@ pub async fn get_subscriber_id_from_token(
     subscription_token: &str
 ) -> Result<Option<Uuid>, sqlx::Error> {
     let result = sqlx::query!(
-        "SELECT subscriber_id, subscription_token FROM subscription_tokens \
+        "SELECT subscriber_id FROM subscription_tokens \
         WHERE subscription_token = $1",
         subscription_token
     )
