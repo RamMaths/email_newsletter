@@ -63,19 +63,15 @@ impl DatabaseSettings {
 
 #[derive(serde::Deserialize, Clone)]
 pub struct EmailClientSettings {
-    pub base_url: String,
-    pub sender_email: String,
-    pub authorization_token: Secret<String>,
-    timeout_milliseconds: u64
+    pub host_url: String,
+    pub from: String,
+    pub username: String,
+    pub password: Secret<String>
 }
 
 impl EmailClientSettings {
     pub fn sender(&self) -> Result<SubscriberEmail, String> {
-        SubscriberEmail::parse(self.sender_email.clone())
-    }
-
-    pub fn timeout(&self) -> std::time::Duration {
-        std::time::Duration::from_millis(self.timeout_milliseconds)
+        SubscriberEmail::parse(self.from.clone())
     }
 }
 
