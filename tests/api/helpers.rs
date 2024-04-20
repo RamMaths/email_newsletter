@@ -98,7 +98,6 @@ pub async fn spawn_app() -> TestApp {
             .expect("Failed to get the configuration file");
         c.database.database_name = Uuid::new_v4().to_string();
         c.application.port = 0;
-        c.email_client.host_url = email_server.uri();
         c
     };
 

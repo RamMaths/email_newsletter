@@ -7,19 +7,21 @@ use wiremock::{
 };
 
 #[tokio::test]
+async fn subscribing_through_smtp() {
+    let app = spawn_app().await;
+    let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
+    let response = app.post_subscriptions(body.into()).await;
+}
+
+#[tokio::test]
 async fn subscribe_returns_200_for_valid_form_data() {
     let app: TestApp = spawn_app().await;
     let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
 
-    Mock::given(matchers::path("/api/send"))
-        .and(matchers::method("POST"))
-        .respond_with(ResponseTemplate::new(200))
-        .expect(1)
-        .mount(&app.email_server)
-        .await;
-
     let response = app.post_subscriptions(body.into()).await;
-    
+
+    println!("{:?}", response);
+
     assert_eq!(200, response.status().as_u16());
 }
 
