@@ -106,6 +106,36 @@ async fn subscribe_sends_a_confirmation_email_with_a_link() {
 }
 
 #[tokio::test]
+async fn user_tries_to_susbcribe_twice() {
+    let app = spawn_app().await;
+    let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
+
+    Mock::given(matchers::path("/api/send"))
+        .and(matchers::method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&app.email_server)
+        .await;
+
+    // attempt one
+    println!("first attempt");
+    app.post_subscriptions(body.into()).await;
+
+    let email_request = &app.email_server.received_requests().await.unwrap()[0];
+    let first_confirmation_link = app.get_confirmation_links(&email_request);
+
+
+    // attempt two
+    println!("second attempt");
+    app.post_subscriptions(body.into()).await;
+
+    let email_request = &app.email_server.received_requests().await.unwrap()[1];
+    let confirmation_links = app.get_confirmation_links(&email_request);
+
+    assert_eq!(first_confirmation_link.html, confirmation_links.html);
+}
+
+#[tokio::test]
 async fn confirmations_without_token_are_rejected_with_400() {
     let app: TestApp = spawn_app().await;
 

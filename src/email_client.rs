@@ -60,11 +60,14 @@ impl EmailClient {
 
         self
             .http_client.post(url)
-            .header("Api-Token", self.authorization_token.expose_secret())
+            .header("Authorization", format!("Bearer {}", self.authorization_token.expose_secret()))
+            .header("Content-Type", "application/json")
             .json(&request_body)
             .send()
             .await?
             .error_for_status()?;
+
+        println!("\n\n\n\nBearer {}\n\n\n\n", self.authorization_token.expose_secret());
 
         Ok(())
     }
