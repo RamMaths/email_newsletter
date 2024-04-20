@@ -13,8 +13,14 @@ use once_cell::sync::Lazy;
 use email_newsletter::startup::*;
 use wiremock::MockServer;
 
+pub struct ConfirmationLinks {
+    pub html: reqwest::Url,
+    pub plain_text: reqwest::Url
+}
+
 pub struct TestApp {
     pub address: String,
+    pub port: u16,
     pub db_pool: PgPool,
     pub email_server: MockServer
 }
@@ -28,6 +34,36 @@ impl TestApp {
             .send()
             .await
             .expect("Failed to execute the request")
+    }
+
+    pub fn get_confirmation_links(
+        &self,
+        email_request: &wiremock::Request
+    ) -> ConfirmationLinks {
+
+        let body: serde_json::Value = serde_json::from_slice(&email_request.body).unwrap();
+
+        let get_link = |s: &str| {
+            let links: Vec<_> = linkify::LinkFinder::new()
+                .links(s)
+                .filter(|l| *l.kind() == linkify::LinkKind::Url)
+                .collect();
+
+            assert_eq!(links.len(), 1);
+            let raw_link = links[0].as_str().to_owned();
+            let mut confirmation_link = reqwest::Url::parse(&raw_link).unwrap();
+
+            assert_eq!(confirmation_link.host_str().unwrap(), "127.0.0.1");
+            confirmation_link.set_port(Some(self.port)).unwrap();
+            confirmation_link
+        };
+
+        let html = get_link(&body["attachments"][0]["content"].as_str().unwrap());
+        let plain_text = get_link(&body["text"].as_str().unwrap());
+        ConfirmationLinks {
+            html,
+            plain_text
+        }
     }
 }
 
@@ -55,14 +91,8 @@ static TRAICING: Lazy<()> = Lazy::new(|| {
 
 pub async fn spawn_app() -> TestApp {
     Lazy::force(&TRAICING);
-    //
-    // let listener = TcpListener::bind("127.0.0.1:0")
-    //     .expect("Failed to bind random port");
-    // let port = listener.local_addr().unwrap().port();
-    // let address = format!("http://127.0.0.1:{}", port);
 
     let email_server = MockServer::start().await;
-
     let configuration = {
         let mut c = email_newsletter::configuration::get_configuration()
             .expect("Failed to get the configuration file");
@@ -71,17 +101,20 @@ pub async fn spawn_app() -> TestApp {
         c.email_client.base_url = email_server.uri();
         c
     };
+
     configure_database(&configuration.database).await;
 
     let application = Application::build(configuration.clone())
         .await
         .expect("Failed to build the server");
-    let address = format!("http://127.0.0.1:{}", application.port());
+    let application_port = application.port();
+    let address = format!("http://127.0.0.1:{}", &application_port);
     let _ = tokio::spawn(application.run_until_stopped());
 
     //We return the application address to the caller
     TestApp {
         address,
+        port: application_port,
         db_pool: get_connection_pool(&configuration.database),
         email_server
     }
