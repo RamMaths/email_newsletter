@@ -8,10 +8,12 @@ use uuid::Uuid;
 use crate::{
     domain::NewSubscriber,
     email_client::EmailClient,
-    startup::ApplicationBaseUrl
+    startup::ApplicationBaseUrl,
+    configuration::Environment
 };
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
+use crate::email_client::TestResponse;
 
 // subscribe
 #[derive(serde::Deserialize)]
@@ -46,7 +48,10 @@ pub async fn subscribe(
     };
 
     let subscriber_id = match insert_subscriber(&new_subscriber, &mut transaction).await {
-        Err(_) => return HttpResponse::InternalServerError().finish(),
+        Err(err) => {
+            println!("{}", err);
+            return HttpResponse::InternalServerError().finish();
+        },
         Ok(id) => id
     };
 
@@ -56,22 +61,43 @@ pub async fn subscribe(
         return HttpResponse::InternalServerError().finish();
     }
 
-    if send_confirmation_email(
-        &email_client,
-        new_subscriber,
-        &base_url.0,
-        &subscription_token
-    )
-    .await
-    .is_err() {
-        return HttpResponse::InternalServerError().finish();
-    }
-
     if transaction.commit().await.is_err() {
         return HttpResponse::InternalServerError().finish();
     }
 
-    HttpResponse::Ok().finish()
+    let environment: Environment = std::env::var("APP_ENVIRONMENT")
+        .unwrap_or_else(|_| "local".into())
+        .try_into()
+        .expect("Failed to parse APP_ENVIRONMENT");
+
+    match environment {
+        Environment::Testing => {
+            let content = format!("/subscriptions/confirm?subscription_token={}", &subscription_token);
+
+            let request_body = TestResponse {
+                from: email_client.from.as_ref().to_string(),
+                to: new_subscriber.email.as_ref().to_string(),
+                subject: "New subscriber".into(),
+                text: content.into()
+            };
+
+            HttpResponse::Ok().json(request_body)
+        },
+        _ => {
+            if send_confirmation_email(
+                &email_client,
+                new_subscriber,
+                &base_url.0,
+                &subscription_token
+            )
+            .await
+            .is_err() {
+                return HttpResponse::InternalServerError().finish();
+            }
+
+            HttpResponse::Ok().finish()
+        }
+    }
 }
 
 #[tracing::instrument(

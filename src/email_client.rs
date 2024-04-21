@@ -6,12 +6,20 @@ use secrecy::{
 use lettre::{transport::smtp::authentication::Credentials, Message, SmtpTransport, Transport};
 use lettre::message::{Mailbox, MultiPart, SinglePart};
 
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
+pub struct TestResponse {
+    pub from: String,
+    pub to: String,
+    pub subject: String,
+    pub text: String
+}
+
 #[derive(Debug)]
 pub struct EmailClient {
-    host_url: String,
-    from: SubscriberEmail,
-    username: String,
-    password: Secret<String>
+    pub host_url: String,
+    pub from: SubscriberEmail,
+    pub username: String,
+    pub password: Secret<String>
 }
 
 impl EmailClient {

@@ -77,14 +77,16 @@ impl EmailClientSettings {
 
 pub enum Environment {
     Local,
-    Production
+    Production,
+    Testing
 }
 
 impl Environment {
     pub fn as_str(&self) -> &'static str {
         match self {
             Environment::Local => "local",
-            Environment::Production => "production"
+            Environment::Production => "production",
+            Environment::Testing => "testing"
         }
     }
 }
@@ -96,6 +98,7 @@ impl TryFrom<String> for Environment {
         match s.to_lowercase().as_str() {
             "local" => Ok(Environment::Local),
             "production" => Ok(Environment::Production),
+            "testing" => Ok(Environment::Testing),
             other => Err(format!(
                 "{} is not a supported environment. \
                 Use either `local` or `production`.",
