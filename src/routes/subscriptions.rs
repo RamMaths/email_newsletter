@@ -47,18 +47,44 @@ pub async fn subscribe(
         Err(_) => return HttpResponse::InternalServerError().finish()
     };
 
+    let mut already_exists = false;
+
     let subscriber_id = match insert_subscriber(&new_subscriber, &mut transaction).await {
         Err(err) => {
-            tracing::error!("{}", err);
-            return HttpResponse::InternalServerError().finish();
+            let err = err
+                .into_database_error()
+                .expect("Failed to cast into database error")
+                .kind();
+
+            if let sqlx::error::ErrorKind::UniqueViolation = err {
+                match get_subscriber_id(new_subscriber.name.as_ref(), &pool).await {
+                    Ok(id) => {
+                        already_exists = true;
+                        transaction = match pool.begin().await {
+                            Ok(transaction) => transaction,
+                            Err(_) => return HttpResponse::InternalServerError().finish()
+                        };
+                        id
+                    },
+                    Err(_) => return HttpResponse::InternalServerError().finish()
+                }
+            } else {
+                return HttpResponse::InternalServerError().finish();
+            }
         },
         Ok(id) => id
     };
 
     let subscription_token = generate_subscription_token();
 
-    if store_token(&mut transaction, subscriber_id, &subscription_token).await.is_err() {
-        return HttpResponse::InternalServerError().finish();
+    if already_exists {
+        if update_token(&mut transaction, subscriber_id, &subscription_token).await.is_err() {
+            return HttpResponse::InternalServerError().finish();
+        }
+    } else {
+        if store_token(&mut transaction, subscriber_id, &subscription_token).await.is_err() {
+            return HttpResponse::InternalServerError().finish();
+        }
     }
 
     if transaction.commit().await.is_err() {
@@ -116,7 +142,40 @@ pub async fn store_token (
         subscriber_id
     );
 
-    transaction.execute(query).await?;
+    transaction
+        .execute(query)
+        .await
+        .map_err(|err| {
+            tracing::error!("{}", err);
+            err
+        })?;
+
+    Ok(())
+}
+
+#[tracing::instrument(
+    name="Update subscription token in the database",
+    skip(subscription_token, transaction)
+)]
+pub async fn update_token (
+    transaction: &mut Transaction<'_,  Postgres>,
+    subscriber_id: Uuid,
+    subscription_token: &str
+) -> Result<(), sqlx::Error> {
+    let query = sqlx::query!(
+        r#"UPDATE subscription_tokens SET subscription_token=$1 WHERE subscriber_id=$2"#,
+        subscription_token,
+        subscriber_id
+    );
+
+    transaction
+        .execute(query)
+        .await
+        .map_err(|err| {
+            tracing::error!("{}", err);
+            err
+        })?;
+
 
     Ok(())
 }
@@ -194,4 +253,18 @@ fn generate_subscription_token() -> String {
         .map(char::from)
         .take(25)
         .collect()
+}
+
+#[tracing::instrument(
+    name = "Getting a user already exists",
+    skip(name, pool)
+)]
+pub async fn get_subscriber_id(name: &str, pool: &PgPool) -> Result<uuid::Uuid, sqlx::Error> {
+    let result = sqlx::query!(
+        "SELECT id FROM subscriptions WHERE name=$1",
+        name
+    ).fetch_one(pool)
+    .await?;
+
+    Ok(result.id)
 }
