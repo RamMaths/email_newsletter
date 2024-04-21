@@ -49,7 +49,7 @@ pub async fn subscribe(
 
     let subscriber_id = match insert_subscriber(&new_subscriber, &mut transaction).await {
         Err(err) => {
-            println!("{}", err);
+            tracing::error!("{}", err);
             return HttpResponse::InternalServerError().finish();
         },
         Ok(id) => id
