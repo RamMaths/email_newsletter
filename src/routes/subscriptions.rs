@@ -247,14 +247,6 @@ pub async fn send_confirmation_email(
     Ok(())
 }
 
-fn generate_subscription_token() -> String {
-    let mut rng = thread_rng();
-    std::iter::repeat_with(|| rng.sample(Alphanumeric))
-        .map(char::from)
-        .take(25)
-        .collect()
-}
-
 #[tracing::instrument(
     name = "Getting a user already exists",
     skip(name, pool)
@@ -267,4 +259,16 @@ pub async fn get_subscriber_id(name: &str, pool: &PgPool) -> Result<uuid::Uuid, 
     .await?;
 
     Ok(result.id)
+}
+
+fn generate_subscription_token() -> String {
+    let mut rng = thread_rng();
+    std::iter::repeat_with(|| rng.sample(Alphanumeric))
+        .map(char::from)
+        .take(25)
+        .collect()
+}
+
+fn generate_html_template() -> String {
+
 }
