@@ -7,6 +7,11 @@ pub struct Parameters {
     subscription_token: String
 }
 
+struct UserData {
+    subscriber_id: Uuid,
+    status: String
+}
+
 #[tracing::instrument(
     name = "Confirm a pending subscriber"
     skip(parameters, pool)
@@ -16,16 +21,20 @@ pub async fn confirm(
     pool: web::Data<PgPool>
 ) -> HttpResponse {
 
-    let id = match get_subscriber_id_from_token(&pool, &parameters.subscription_token).await {
-        Ok(id) => id,
+    let user = match get_subscriber_from_token(&pool, &parameters.subscription_token).await {
+        Ok(user) => user,
         Err(_) => return HttpResponse::InternalServerError().finish()
     };
 
-    match id {
+    match user {
         // Non existing token
         None => return HttpResponse::Unauthorized().finish(),
-        Some(id) => {
-            if confirm_subscriber(&pool, id).await.is_err() {
+        Some(user) => {
+            if user.status == "confirmed" {
+                return HttpResponse::Conflict().finish();
+            }
+
+            if confirm_subscriber(&pool, user.subscriber_id).await.is_err() {
                 return HttpResponse::InternalServerError().finish();
             }
 
@@ -35,16 +44,18 @@ pub async fn confirm(
 }
 
 #[tracing::instrument(
-    name = "Get subscriber_id from token",
+    name = "Get subscriber from token",
     skip(subscription_token, pool)
 )]
-pub async fn get_subscriber_id_from_token(
+pub async fn get_subscriber_from_token(
     pool: &PgPool,
     subscription_token: &str
-) -> Result<Option<Uuid>, sqlx::Error> {
+) -> Result<Option<UserData>, sqlx::Error> {
     let result = sqlx::query!(
-        "SELECT subscriber_id FROM subscription_tokens \
-        WHERE subscription_token = $1",
+        "SELECT subscriber_id, s.status \
+        FROM subscription_tokens AS st \
+        JOIN subscriptions AS s ON s.id = st.subscriber_id \
+        WHERE st.subscription_token LIKE $1",
         subscription_token
     )
     .fetch_optional(pool)
@@ -54,7 +65,7 @@ pub async fn get_subscriber_id_from_token(
         e
     })?;
 
-    Ok(result.map(|r| r.subscriber_id))
+    Ok(result.map(|r| UserData { subscriber_id: r.subscriber_id, status: r.status }))
 }
 
 #[tracing::instrument(

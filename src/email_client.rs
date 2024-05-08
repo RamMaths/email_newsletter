@@ -1,37 +1,39 @@
 use crate::domain::SubscriberEmail;
-use reqwest::{
-    Client,
-    Url
-};
 use secrecy::{
     Secret,
     ExposeSecret
 };
-use serde_json::json;
+use lettre::{transport::smtp::authentication::Credentials, Message, SmtpTransport, Transport};
+use lettre::message::{Mailbox, MultiPart, SinglePart};
+
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
+pub struct TestResponse {
+    pub from: String,
+    pub to: String,
+    pub subject: String,
+    pub text: String
+}
 
 #[derive(Debug)]
 pub struct EmailClient {
-    http_client: Client,
-    base_url: String,
-    sender: SubscriberEmail,
-    authorization_token: Secret<String>
+    pub host_url: String,
+    pub from: SubscriberEmail,
+    pub username: String,
+    pub password: Secret<String>
 }
 
 impl EmailClient {
     pub fn new(
-        base_url: String,
-        sender: SubscriberEmail,
-        authorization_token: Secret<String>,
-        timeout: std::time::Duration
+        host_url: String,
+        from: SubscriberEmail,
+        username: String,
+        password: Secret<String>
     ) -> Self {
         Self {
-            http_client: Client::builder()
-                .timeout(timeout)
-                .build()
-                .unwrap(),
-            base_url,
-            sender,
-            authorization_token
+            host_url,
+            from,
+            username,
+            password
         }
     }
     pub async fn send_email(
@@ -41,30 +43,27 @@ impl EmailClient {
         html_content: &str,
         text_content: &str
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let url = Url::parse(&self.base_url)?
-            .join("/api/send")?;
+        //Defining the email
+        let email = Message::builder()
+            .from(self.from.as_ref().parse::<Mailbox>().expect("Could not parse the given from email to Mailbox"))
+            .to(recipient.as_ref().parse::<Mailbox>().expect("Could not parse the given to email to Mailbox"))
+            .subject(subject)
+            .multipart(
+                MultiPart::mixed()
+                    .singlepart(SinglePart::html(html_content.to_string()))
+                    .singlepart(SinglePart::plain(text_content.to_string()))
 
-        let request_body = json!({
-            "from": {"email": self.sender.as_ref()},
-            "to": [{"email": recipient.as_ref()}],
-            "subject": subject,
-            "attachments": [
-                {
-                    "content": html_content,
-                    "type": "text/html"
-                }
-            ],
-            "text": text_content,
-            "json": true
-        });
+            )?;
 
-        self
-            .http_client.post(url)
-            .header("Api-Token", self.authorization_token.expose_secret())
-            .json(&request_body)
-            .send()
-            .await?
-            .error_for_status()?;
+        // setting SMTP client credentials
+        let creds = Credentials::new(self.username.to_owned(), self.password.expose_secret().to_owned());
+
+        //Openning a remote connection to the SMTP server
+        let mailer = SmtpTransport::starttls_relay(&self.host_url)?
+            .credentials(creds)
+            .build();
+
+        mailer.send(&email)?;
 
         Ok(())
     }
@@ -73,81 +72,26 @@ impl EmailClient {
 #[cfg(test)]
 mod tests {
     use crate::domain::SubscriberEmail;
-    use crate::email_client::EmailClient;
-    use fake::faker::internet::en::SafeEmail;
-    use fake::faker::lorem::en::{Paragraph, Sentence}; use fake::{Fake, Faker};
-    use wiremock::matchers::{
-        any,
-        header,
-        method,
-        header_exists
-    };
-    use wiremock::{
-        Mock, 
-        MockServer, 
-        ResponseTemplate
-    };
+    use super::EmailClient;
     use secrecy::Secret;
-    use claims::{
-        assert_ok,
-        assert_err
-    };
-
-    fn subject() -> String {
-        Sentence(1..2).fake()
-    }
-
-    fn content() -> String {
-        Paragraph(1..10).fake()
-    }
-
-    fn email() -> SubscriberEmail {
-        SubscriberEmail::parse(SafeEmail().fake()).unwrap()
-    }
-
-    fn email_client(base_url: String) -> EmailClient {
-        EmailClient::new(base_url, email(), Secret::new(Faker.fake()), std::time::Duration::from_millis(200))
-    }
 
     #[tokio::test]
-    async fn send_email_fires_a_request_to_base_url() {
-        let mock_server = MockServer::start().await;
-        let email_client = email_client(mock_server.uri());
+    async fn sending_email_through_smtp() {
+        let email_client = EmailClient::new(
+            "sandbox.smtp.mailtrap.io".to_string(),
+            SubscriberEmail::parse("ram.hdzven@gmail.com".to_string()).unwrap(),
+            "cc16782b5fa486".to_string(),
+            Secret::new("926b5352acd1f3".to_string())
+        );
 
-        Mock::given(header_exists("Api-Token"))
-            .and(header("Content-Type", "application/json"))
-            .and(method("POST"))
-            .respond_with(ResponseTemplate::new(200))
-            .expect(1)
-            .mount(&mock_server)
-            .await;
-
-        //Act
-        let outcome = email_client
-            .send_email(email(), &subject(), &content(), &content())
-            .await;
-
-        //Assert
-        assert_ok!(outcome);
-    }
-
-    #[tokio::test]
-    async fn send_email_fails_if_the_server_returns_500() {
-        let mock_server = MockServer::start().await;
-        let email_client = email_client(mock_server.uri());
-
-        Mock::given(any())
-            .respond_with(ResponseTemplate::new(500))
-            .expect(1)
-            .mount(&mock_server)
-            .await;
-
-        //Act
-        let outcome = email_client
-            .send_email(email(), &subject(), &content(), &content())
-            .await;
-
-        //Assert
-        assert_err!(outcome);
+        email_client.send_email(
+            SubscriberEmail::parse("ram.hdzven@gmail.com".to_string()).
+                expect("Couldn't parse the email"),
+            "Hello world",
+            "Hello as well",
+            "<h2>Hello from html</h2>"
+        )
+        .await
+        .unwrap();
     }
 }
