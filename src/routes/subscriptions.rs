@@ -14,6 +14,8 @@ use crate::{
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use crate::email_client::TestResponse;
+use crate::templates;
+
 
 // subscribe
 #[derive(serde::Deserialize)]
@@ -72,6 +74,7 @@ pub async fn subscribe(
                 return HttpResponse::InternalServerError().finish();
             }
         },
+
         Ok(id) => id
     };
 
@@ -224,15 +227,12 @@ pub async fn send_confirmation_email(
 ) -> Result<(), Box<dyn std::error::Error>> {
 
     let confirmation_link = format!("{}/subscriptions/confirm?subscription_token={}", base_url, token);
+    let html = templates::generate_html_template(&new_subscriber, &confirmation_link)?;
 
     email_client.send_email(
         new_subscriber.email,
         "Welcome!",
-        &format!(
-            "Welcome to out newsletter!<br />\
-            Click <a href=\"{}\">here</a> to confirm your subscription.",
-            confirmation_link
-        ),
+        &html,
         &format!(
             "Welcome to our newsletter!\nVisit {} to confirm your subscription.",
             confirmation_link
@@ -267,8 +267,4 @@ fn generate_subscription_token() -> String {
         .map(char::from)
         .take(25)
         .collect()
-}
-
-fn generate_html_template() -> String {
-
 }

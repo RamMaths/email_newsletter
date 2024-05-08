@@ -23,6 +23,7 @@ pub struct Application {
     port: u16,
     server: Server
 }
+
 pub struct ApplicationBaseUrl(pub String);
 
 impl Application {
