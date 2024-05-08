@@ -8,10 +8,14 @@ use uuid::Uuid;
 use crate::{
     domain::NewSubscriber,
     email_client::EmailClient,
-    startup::ApplicationBaseUrl
+    startup::ApplicationBaseUrl,
+    configuration::Environment
 };
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
+use crate::email_client::TestResponse;
+use crate::templates;
+
 
 // subscribe
 #[derive(serde::Deserialize)]
@@ -45,33 +49,84 @@ pub async fn subscribe(
         Err(_) => return HttpResponse::InternalServerError().finish()
     };
 
+    let mut already_exists = false;
+
     let subscriber_id = match insert_subscriber(&new_subscriber, &mut transaction).await {
-        Err(_) => return HttpResponse::InternalServerError().finish(),
+        Err(err) => {
+            let err = err
+                .into_database_error()
+                .expect("Failed to cast into database error")
+                .kind();
+
+            if let sqlx::error::ErrorKind::UniqueViolation = err {
+                match get_subscriber_id(new_subscriber.name.as_ref(), &pool).await {
+                    Ok(id) => {
+                        already_exists = true;
+                        transaction = match pool.begin().await {
+                            Ok(transaction) => transaction,
+                            Err(_) => return HttpResponse::InternalServerError().finish()
+                        };
+                        id
+                    },
+                    Err(_) => return HttpResponse::InternalServerError().finish()
+                }
+            } else {
+                return HttpResponse::InternalServerError().finish();
+            }
+        },
+
         Ok(id) => id
     };
 
     let subscription_token = generate_subscription_token();
 
-    if store_token(&mut transaction, subscriber_id, &subscription_token).await.is_err() {
-        return HttpResponse::InternalServerError().finish();
-    }
-
-    if send_confirmation_email(
-        &email_client,
-        new_subscriber,
-        &base_url.0,
-        &subscription_token
-    )
-    .await
-    .is_err() {
-        return HttpResponse::InternalServerError().finish();
+    if already_exists {
+        if update_token(&mut transaction, subscriber_id, &subscription_token).await.is_err() {
+            return HttpResponse::InternalServerError().finish();
+        }
+    } else {
+        if store_token(&mut transaction, subscriber_id, &subscription_token).await.is_err() {
+            return HttpResponse::InternalServerError().finish();
+        }
     }
 
     if transaction.commit().await.is_err() {
         return HttpResponse::InternalServerError().finish();
     }
 
-    HttpResponse::Ok().finish()
+    let environment: Environment = std::env::var("APP_ENVIRONMENT")
+        .unwrap_or_else(|_| "local".into())
+        .try_into()
+        .expect("Failed to parse APP_ENVIRONMENT");
+
+    match environment {
+        Environment::Testing => {
+            let content = format!("/subscriptions/confirm?subscription_token={}", &subscription_token);
+
+            let request_body = TestResponse {
+                from: email_client.from.as_ref().to_string(),
+                to: new_subscriber.email.as_ref().to_string(),
+                subject: "New subscriber".into(),
+                text: content.into()
+            };
+
+            HttpResponse::Ok().json(request_body)
+        },
+        _ => {
+            if send_confirmation_email(
+                &email_client,
+                new_subscriber,
+                &base_url.0,
+                &subscription_token
+            )
+            .await
+            .is_err() {
+                return HttpResponse::InternalServerError().finish();
+            }
+
+            HttpResponse::Ok().finish()
+        }
+    }
 }
 
 #[tracing::instrument(
@@ -90,7 +145,40 @@ pub async fn store_token (
         subscriber_id
     );
 
-    transaction.execute(query).await?;
+    transaction
+        .execute(query)
+        .await
+        .map_err(|err| {
+            tracing::error!("{}", err);
+            err
+        })?;
+
+    Ok(())
+}
+
+#[tracing::instrument(
+    name="Update subscription token in the database",
+    skip(subscription_token, transaction)
+)]
+pub async fn update_token (
+    transaction: &mut Transaction<'_,  Postgres>,
+    subscriber_id: Uuid,
+    subscription_token: &str
+) -> Result<(), sqlx::Error> {
+    let query = sqlx::query!(
+        r#"UPDATE subscription_tokens SET subscription_token=$1 WHERE subscriber_id=$2"#,
+        subscription_token,
+        subscriber_id
+    );
+
+    transaction
+        .execute(query)
+        .await
+        .map_err(|err| {
+            tracing::error!("{}", err);
+            err
+        })?;
+
 
     Ok(())
 }
@@ -139,15 +227,12 @@ pub async fn send_confirmation_email(
 ) -> Result<(), Box<dyn std::error::Error>> {
 
     let confirmation_link = format!("{}/subscriptions/confirm?subscription_token={}", base_url, token);
+    let html = templates::generate_html_template(&new_subscriber, &confirmation_link)?;
 
     email_client.send_email(
         new_subscriber.email,
         "Welcome!",
-        &format!(
-            "Welcome to out newsletter!<br />\
-            Click <a href=\"{}\">here</a> to confirm your subscription.",
-            confirmation_link
-        ),
+        &html,
         &format!(
             "Welcome to our newsletter!\nVisit {} to confirm your subscription.",
             confirmation_link
@@ -160,6 +245,20 @@ pub async fn send_confirmation_email(
     })?;
 
     Ok(())
+}
+
+#[tracing::instrument(
+    name = "Getting a user already exists",
+    skip(name, pool)
+)]
+pub async fn get_subscriber_id(name: &str, pool: &PgPool) -> Result<uuid::Uuid, sqlx::Error> {
+    let result = sqlx::query!(
+        "SELECT id FROM subscriptions WHERE name=$1",
+        name
+    ).fetch_one(pool)
+    .await?;
+
+    Ok(result.id)
 }
 
 fn generate_subscription_token() -> String {

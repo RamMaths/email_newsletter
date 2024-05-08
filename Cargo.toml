@@ -32,6 +32,11 @@ validator = "0.16"
 url = "2.5.0"
 serde_json = "1"
 rand = { version = "0.8", features = ["std_rng"] }
+lettre = "0.10"
+lettre_email = "0.9"
+lazy_static = "1.4.0"
+tera = "1.19.1"
+
 
 [dependencies.reqwest]
 version = "0.11"

@@ -63,32 +63,30 @@ impl DatabaseSettings {
 
 #[derive(serde::Deserialize, Clone)]
 pub struct EmailClientSettings {
-    pub base_url: String,
-    pub sender_email: String,
-    pub authorization_token: Secret<String>,
-    timeout_milliseconds: u64
+    pub host_url: String,
+    pub from: String,
+    pub username: String,
+    pub password: Secret<String>
 }
 
 impl EmailClientSettings {
     pub fn sender(&self) -> Result<SubscriberEmail, String> {
-        SubscriberEmail::parse(self.sender_email.clone())
-    }
-
-    pub fn timeout(&self) -> std::time::Duration {
-        std::time::Duration::from_millis(self.timeout_milliseconds)
+        SubscriberEmail::parse(self.from.clone())
     }
 }
 
 pub enum Environment {
     Local,
-    Production
+    Production,
+    Testing
 }
 
 impl Environment {
     pub fn as_str(&self) -> &'static str {
         match self {
             Environment::Local => "local",
-            Environment::Production => "production"
+            Environment::Production => "production",
+            Environment::Testing => "testing"
         }
     }
 }
@@ -100,6 +98,7 @@ impl TryFrom<String> for Environment {
         match s.to_lowercase().as_str() {
             "local" => Ok(Environment::Local),
             "production" => Ok(Environment::Production),
+            "testing" => Ok(Environment::Testing),
             other => Err(format!(
                 "{} is not a supported environment. \
                 Use either `local` or `production`.",
