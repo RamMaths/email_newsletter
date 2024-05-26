@@ -1,5 +1,5 @@
 name: emailnewsletter
-region: nyc3
+region: sfo2
 services: 
   - name: emailnewsletter
     dockerfile_path: Dockerfile
@@ -16,6 +16,9 @@ services:
     routes:
       - path: /
     envs:
+      - key: APP_APPLICATION__BASE_URL
+        scope: RUN_TIME
+        value: ${APP_URL}
       - key: APP_DATABASE__USERNAME
         scope: RUN_TIME
         value: ${newsletter.USERNAME}
@@ -31,12 +34,9 @@ services:
       - key: APP_DATABASE__DATABASE_NAME
         scope: RUN_TIME
         value: ${newsletter.DATABASE}
-      - key: APP_APPLICATION__BASE_URL
-        scope: RUN_TIME
-        value: ${APP_URL}
 databases:
   - engine: PG
     name: newsletter
     num_nodes: 1
     size: db-s-dev-database
-    version: "12"
+    version: "14"

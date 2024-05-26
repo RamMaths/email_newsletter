@@ -7,11 +7,7 @@ use email_newsletter::{
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
     //setting the subscriber (telemetry)
-    let subscriber = get_subscriber(
-        "email_newsletter".to_string(),
-        "info".to_string(),
-        std::io::stdout
-    );
+    let subscriber = get_subscriber("email_newsletter".into(), "info".into(), std::io::stdout);
     init_subscriber(subscriber);
 
     let configuration = get_configuration()

@@ -1,6 +1,6 @@
 use crate::helpers::*;
-use reqwest::Url;
 use email_newsletter::email_client::TestResponse;
+use reqwest::Url;
 
 #[tokio::test]
 async fn subscribing_through_smtp() {
@@ -9,9 +9,7 @@ async fn subscribing_through_smtp() {
 
     // Creating a new subscriber for the first time
 
-    let response = app
-        .post_subscriptions(body.into())
-        .await;
+    let response = app.post_subscriptions(body.into()).await;
 
     assert_eq!(200, response.status().as_u16());
 
@@ -28,11 +26,7 @@ async fn subscribing_through_smtp() {
     println!("{}", url);
 
     // confirming the email
-    reqwest::get(url)
-        .await
-        .unwrap()
-        .error_for_status()
-        .unwrap();
+    reqwest::get(url).await.unwrap().error_for_status().unwrap();
 
     let saved = sqlx::query!("SELECT email, name, status FROM subscriptions")
         .fetch_one(&app.db_pool)
@@ -51,9 +45,7 @@ async fn inserting_a_subscriber_twice() {
 
     // Creating a new subscriber for the first time
 
-    let response = app
-        .post_subscriptions(body.into())
-        .await;
+    let response = app.post_subscriptions(body.into()).await;
 
     assert_eq!(200, response.status().as_u16());
 
@@ -71,9 +63,7 @@ async fn inserting_a_subscriber_twice() {
 
     // Trying to save the subscriber twice
 
-    let response = app
-        .post_subscriptions(body.into())
-        .await;
+    let response = app.post_subscriptions(body.into()).await;
 
     assert_eq!(200, response.status().as_u16());
 
@@ -91,11 +81,7 @@ async fn inserting_a_subscriber_twice() {
 
     // confirming the email
 
-    reqwest::get(url)
-        .await
-        .unwrap()
-        .error_for_status()
-        .unwrap();
+    reqwest::get(url).await.unwrap().error_for_status().unwrap();
 }
 
 #[tokio::test]
@@ -105,9 +91,7 @@ async fn using_a_confirmation_token_twice_returns_409() {
 
     // Creating a new subscriber for the first time
 
-    let response = app
-        .post_subscriptions(body.into())
-        .await;
+    let response = app.post_subscriptions(body.into()).await;
 
     assert_eq!(200, response.status().as_u16());
 
@@ -120,18 +104,28 @@ async fn using_a_confirmation_token_twice_returns_409() {
         .expect("Couldn't parse the link")
         .join(&response.text)
         .expect("Couldn't parse the link");
-    
+
     // Using a confirmation link twice
 
-    let _ = reqwest::get(url.clone())
-        .await
-        .unwrap();
-    
-    let response: u16 = reqwest::get(url)
-        .await
-        .unwrap()
-        .status().
-        as_u16();
+    let _ = reqwest::get(url.clone()).await.unwrap();
+
+    let response: u16 = reqwest::get(url).await.unwrap().status().as_u16();
 
     assert_eq!(response, 409);
+}
+
+#[tokio::test]
+async fn subscribe_fails_if_there_is_a_fatal_database_error() {
+    // Arrange
+    let app = spawn_app().await;
+    let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
+    // Sabotage the database
+    sqlx::query!("ALTER TABLE subscriptions DROP COLUMN email;",)
+        .execute(&app.db_pool)
+        .await
+        .unwrap();
+    // Act
+    let response = app.post_subscriptions(body.into()).await;
+    // Assert
+    assert_eq!(response.status().as_u16(), 500);
 }
