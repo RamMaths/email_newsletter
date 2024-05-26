@@ -37,6 +37,7 @@ lettre_email = "0.9"
 lazy_static = "1.4.0"
 tera = "1.19.1"
 thiserror = "1"
+anyhow = "1.0.86"
 
 
 [dependencies.reqwest]

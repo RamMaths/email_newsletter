@@ -3,6 +3,7 @@ use crate::error_handling::SubscribeError;
 use crate::templates;
 use crate::{domain::NewSubscriber, email_client::EmailClient, startup::ApplicationBaseUrl};
 use actix_web::{web, HttpResponse};
+use anyhow::Context;
 use chrono::Utc;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
@@ -34,12 +35,11 @@ pub async fn subscribe(
         .0
         .try_into()
         .map_err(|err| SubscribeError::ValidationError(err))?;
-    let mut transaction = pool.begin().await.map_err(|err| {
-        SubscribeError::UnexpectedError(
-            Box::new(err),
-            "Failed to acquire a Postgres connection from the pool".into(),
-        )
-    })?;
+    let mut transaction = pool
+        .begin()
+        .await
+        .context("Failed to acquire a Postgres connection from the pool")?;
+
     let mut already_exists = false;
     let subscriber_id = match insert_subscriber(&new_subscriber, &mut transaction).await {
         Err(err) => {
@@ -50,25 +50,17 @@ pub async fn subscribe(
             {
                 let id = get_subscriber_id(new_subscriber.name.as_ref(), &pool)
                     .await
-                    .map_err(|err| {
-                        SubscribeError::UnexpectedError(
-                            Box::new(err),
-                            "Failed to get the subscriber from the database".into(),
-                        )
-                    })?;
+                    .context("Failed to get the subscriber from the database")?;
                 already_exists = true;
-                transaction = pool.begin().await.map_err(|err| {
-                    SubscribeError::UnexpectedError(
-                        Box::new(err),
-                        "Failed to start a transaction".into(),
-                    )
-                })?;
+
+                transaction = pool
+                    .begin()
+                    .await
+                    .context("Failed to start a transaction")?;
+
                 id
             } else {
-                return Err(SubscribeError::UnexpectedError(
-                    Box::new(err),
-                    "Failed to insert new subscriber in the database".into(),
-                ));
+                return Err(SubscribeError::UnexpectedError(err.into()));
             }
         }
 
@@ -80,21 +72,11 @@ pub async fn subscribe(
     if already_exists {
         update_token(&mut transaction, subscriber_id, &subscription_token)
             .await
-            .map_err(|err| {
-                SubscribeError::UnexpectedError(
-                    Box::new(err),
-                    "Failed to update the confirmation token in the database".into(),
-                )
-            })?;
+            .context("Failed to update the confirmation token in the database")?;
     } else {
         store_token(&mut transaction, subscriber_id, &subscription_token)
             .await
-            .map_err(|err| {
-                SubscribeError::UnexpectedError(
-                    Box::new(err),
-                    "Failed to store the confirmation token in the database".into(),
-                )
-            })?;
+            .context("Failed to store the confirmation token in the database")?;
     }
 
     send_confirmation_email(
@@ -105,12 +87,10 @@ pub async fn subscribe(
     )
     .await?;
 
-    transaction.commit().await.map_err(|err| {
-        SubscribeError::UnexpectedError(
-            Box::new(err),
-            "Failed to commit the SQL transaction to store a new subscriber".into(),
-        )
-    })?;
+    transaction
+        .commit()
+        .await
+        .context("Failed to commit the SQL transaction to store a new subscriber")?;
 
     Ok(HttpResponse::Ok().finish())
 }
@@ -208,14 +188,8 @@ pub async fn send_confirmation_email(
         "{}/subscriptions/confirm?subscription_token={}",
         base_url, token
     );
-    let html =
-        templates::generate_html_template(&new_subscriber, &confirmation_link).map_err(|e| {
-            tracing::error!("Failed to execute the query: {}", e);
-            SubscribeError::UnexpectedError(
-                Box::new(e),
-                "Failed to generate the html template for the confirmation email".into(),
-            )
-        })?;
+    let html = templates::generate_html_template(&new_subscriber, &confirmation_link)
+        .context("Failed to generate the html template for the confirmation email")?;
 
     email_client
         .send_email(
@@ -228,13 +202,7 @@ pub async fn send_confirmation_email(
             ),
         )
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to execute the query: {}", e);
-            SubscribeError::UnexpectedError(
-                Box::new(e),
-                "Failed to send confirmation email to the user".into(),
-            )
-        })?;
+        .context("Failed to send confirmation email to the user")?;
 
     Ok(())
 }
