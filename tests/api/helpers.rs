@@ -22,6 +22,16 @@ impl TestApp {
             .await
             .expect("Failed to execute the request")
     }
+
+    pub async fn post_newsletters(&self, body: serde_json::Value) -> reqwest::Response {
+        let url = format!("{}/newsletters", &self.address);
+        reqwest::Client::new()
+            .post(&url)
+            .json(&body)
+            .send()
+            .await
+            .expect("Failed to execute request.")
+    }
 }
 
 static TRAICING: Lazy<()> = Lazy::new(|| {

@@ -114,7 +114,7 @@ pub async fn subscribe(
                 text: content.into(),
             };
 
-            HttpResponse::Ok().json(request_body)
+            return Ok(HttpResponse::Ok().json(request_body));
         }
         _ => {
             send_confirmation_email(
@@ -125,11 +125,9 @@ pub async fn subscribe(
             )
             .await?;
 
-            HttpResponse::Ok().finish()
+            return Ok(HttpResponse::Ok().finish());
         }
     };
-
-    Ok(HttpResponse::Ok().finish())
 }
 
 #[tracing::instrument(

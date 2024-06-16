@@ -2,7 +2,7 @@ use crate::helpers::*;
 use crate::newsletter;
 use email_newsletter::email_client::TestResponse;
 use reqwest::Url;
-use wiremock::matchers::{any, method, path};
+use wiremock::matchers::any;
 use wiremock::{Mock, ResponseTemplate};
 
 #[tokio::test]
