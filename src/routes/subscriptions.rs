@@ -1,7 +1,10 @@
 use crate::error_handling::StoreTokenError;
 use crate::error_handling::SubscribeError;
 use crate::templates;
-use crate::{domain::NewSubscriber, email_client::EmailClient, startup::ApplicationBaseUrl};
+use crate::{
+    configuration::Environment, domain::NewSubscriber, email_client::EmailClient,
+    email_client::TestResponse, startup::ApplicationBaseUrl,
+};
 use actix_web::{web, HttpResponse};
 use anyhow::Context;
 use chrono::Utc;
@@ -79,20 +82,52 @@ pub async fn subscribe(
             .context("Failed to store the confirmation token in the database")?;
     }
 
-    send_confirmation_email(
-        &email_client,
-        new_subscriber,
-        &base_url.0,
-        &subscription_token,
-    )
-    .await?;
+    // send_confirmation_email(
+    //     &email_client,
+    //     new_subscriber,
+    //     &base_url.0,
+    //     &subscription_token,
+    // )
+    // .await?;
 
     transaction
         .commit()
         .await
         .context("Failed to commit the SQL transaction to store a new subscriber")?;
 
-    Ok(HttpResponse::Ok().finish())
+    let environment: Environment = std::env::var("APP_ENVIRONMENT")
+        .unwrap_or_else(|_| "local".into())
+        .try_into()
+        .expect("Failed to parse APP_ENVIRONMENT");
+
+    match environment {
+        Environment::Testing => {
+            let content = format!(
+                "/subscriptions/confirm?subscription_token={}",
+                &subscription_token
+            );
+
+            let request_body = TestResponse {
+                from: email_client.from.as_ref().to_string(),
+                to: new_subscriber.email.as_ref().to_string(),
+                subject: "New subscriber".into(),
+                text: content.into(),
+            };
+
+            return Ok(HttpResponse::Ok().json(request_body));
+        }
+        _ => {
+            send_confirmation_email(
+                &email_client,
+                new_subscriber,
+                &base_url.0,
+                &subscription_token,
+            )
+            .await?;
+
+            return Ok(HttpResponse::Ok().finish());
+        }
+    };
 }
 
 #[tracing::instrument(

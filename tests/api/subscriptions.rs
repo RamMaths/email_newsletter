@@ -1,6 +1,9 @@
 use crate::helpers::*;
+use crate::newsletter;
 use email_newsletter::email_client::TestResponse;
 use reqwest::Url;
+use wiremock::matchers::any;
+use wiremock::{Mock, ResponseTemplate};
 
 #[tokio::test]
 async fn subscribing_through_smtp() {
@@ -128,4 +131,34 @@ async fn subscribe_fails_if_there_is_a_fatal_database_error() {
     let response = app.post_subscriptions(body.into()).await;
     // Assert
     assert_eq!(response.status().as_u16(), 500);
+}
+
+#[tokio::test]
+async fn newsletters_are_not_delivered_to_unconfirmed_subscribers() {
+    let app = spawn_app().await;
+    newsletter::create_unconfirmed_subscriber(&app).await;
+
+    Mock::given(any())
+        .respond_with(ResponseTemplate::new(200))
+        .expect(0)
+        .mount(&app.email_server)
+        .await;
+
+    // A sketch of the newsletter payload structure. // We might change it later on.
+    let newsletter_request_body = serde_json::json!({
+             "title": "Newsletter title",
+             "content": {
+                 "text": "Newsletter body as plain text",
+                 "html": "<p>Newsletter body as HTML</p>",
+             }
+    });
+
+    let response = reqwest::Client::new()
+        .post(&format!("{}/newsletters", &app.address))
+        .json(&newsletter_request_body)
+        .send()
+        .await
+        .expect("Failed to execute request.");
+
+    assert_eq!(response.status().as_u16(), 200);
 }
