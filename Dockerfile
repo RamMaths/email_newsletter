@@ -2,7 +2,7 @@
 # dependencies and then builds our binary, the third is our runtime environment.
 
 # 1) recipe file----------------------------------------------------
-FROM lukemathwalker/cargo-chef:latest-rust-1.72.0 as chef
+FROM lukemathwalker/cargo-chef:latest-rust-1.76.0 as chef
 WORKDIR /app
 RUN apt update && apt install lld clang -y
 
@@ -35,6 +35,6 @@ RUN apt-get update -y \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/email_newsletter email_newsletter
 COPY configuration configuration
-COPY templates configuration
+COPY templates templates
 ENV APP_ENVIRONMENT production
 ENTRYPOINT ["./email_newsletter"]
