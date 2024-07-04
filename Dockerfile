@@ -35,5 +35,6 @@ RUN apt-get update -y \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/email_newsletter email_newsletter
 COPY configuration configuration
+COPY templates configuration
 ENV APP_ENVIRONMENT production
 ENTRYPOINT ["./email_newsletter"]
