@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE subscription_tokens SET subscription_token=$1 WHERE subscriber_id=$2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1edd8d7c6ced62dc86c884fcdb30a85b7f79d448e800ab7e9991f5a8607d4d12"
+}
