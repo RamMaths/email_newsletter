@@ -1,0 +1,6 @@
+/target
+*.pem
+<<<<<<< HEAD
+/.vscode
+=======
+>>>>>>> awsdeploy

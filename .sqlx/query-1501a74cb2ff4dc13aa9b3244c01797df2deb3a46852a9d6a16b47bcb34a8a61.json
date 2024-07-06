@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT subscriber_id, s.status FROM subscription_tokens AS st JOIN subscriptions AS s ON s.id = st.subscriber_id WHERE st.subscription_token LIKE $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "subscriber_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "status",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "1501a74cb2ff4dc13aa9b3244c01797df2deb3a46852a9d6a16b47bcb34a8a61"
+}
