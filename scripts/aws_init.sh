@@ -7,4 +7,3 @@ mkdir downloads
 cd downloads
 git clone https://github.com/RamMaths/email_newsletter.git
 cd email_newsletter
-kixwYg-dofhys-revka4
