@@ -57,15 +57,14 @@ impl DatabaseSettings {
 
 #[derive(serde::Deserialize, Clone)]
 pub struct EmailClientSettings {
-    pub host_url: String,
-    pub from: String,
-    pub username: String,
-    pub password: Secret<String>,
+    pub api_url: String,
+    pub api_email: String,
+    pub api_key: Secret<String>,
 }
 
 impl EmailClientSettings {
     pub fn sender(&self) -> Result<SubscriberEmail, String> {
-        SubscriberEmail::parse(self.from.clone())
+        SubscriberEmail::parse(self.api_email.clone())
     }
 }
 

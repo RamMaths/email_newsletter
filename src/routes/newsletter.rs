@@ -42,22 +42,22 @@ impl ResponseError for PublishError {
     }
 }
 
-pub async fn publish_newsletter(
-    body: web::Json<BodyData>,
-    pool: web::Data<PgPool>,
-    email_client: web::Data<EmailClient>,
-) -> Result<HttpResponse, PublishError> {
-    let subscribers = get_confirmed_subscribers(&pool).await?;
-    for subscriber in subscribers {
-        email_client.send_email(
-            SubscriberEmail::parse(subscriber.email)?,
-            &body.title,
-            &body.content.html,
-            &body.content.text,
-        );
-    }
-    Ok(HttpResponse::Ok().finish())
-}
+// pub async fn publish_newsletter(
+//     body: web::Json<BodyData>,
+//     pool: web::Data<PgPool>,
+//     email_client: web::Data<EmailClient>,
+// ) -> Result<HttpResponse, PublishError> {
+//     let subscribers = get_confirmed_subscribers(&pool).await?;
+//     for subscriber in subscribers {
+//         email_client.send_email(
+//             SubscriberEmail::parse(subscriber.email)?,
+//             &body.title,
+//             &body.content.html,
+//             &body.content.text,
+//         );
+//     }
+//     Ok(HttpResponse::Ok().finish())
+// }
 
 pub async fn get_confirmed_subscribers(
     pool: &PgPool,
@@ -74,4 +74,4 @@ pub async fn get_confirmed_subscribers(
     .await?;
 
     Ok(rows)
-
+}

@@ -1,6 +1,6 @@
 use super::configuration::{DatabaseSettings, Settings};
 use super::email_client::EmailClient;
-use super::routes::{confirm, health_check, publish_newsletter, subscribe};
+use super::routes::{confirm, health_check, subscribe};
 use actix_web::{dev::Server, web, App, HttpServer};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
@@ -31,7 +31,7 @@ impl Application {
                 .route("/health_check", web::get().to(health_check))
                 .route("/subscriptions", web::post().to(subscribe))
                 .route("/subscriptions/confirm", web::get().to(confirm))
-                .route("/newsletters", web::post().to(publish_newsletter))
+                // .route("/newsletters", web::post().to(publish_newsletter))
                 .app_data(connection.clone())
                 .app_data(email_client.clone())
                 .app_data(base_url.clone())
@@ -53,10 +53,9 @@ impl Application {
             .expect("Invalid sender email address");
 
         let email_client = EmailClient::new(
-            configuration.email_client.host_url.to_owned(),
+            configuration.email_client.api_url.to_owned(),
             email_sender,
-            configuration.email_client.username.to_owned(),
-            configuration.email_client.password,
+            configuration.email_client.api_key.to_owned(),
         );
 
         let address = format!(

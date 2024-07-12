@@ -82,50 +82,27 @@ pub async fn subscribe(
             .context("Failed to store the confirmation token in the database")?;
     }
 
-    // send_confirmation_email(
-    //     &email_client,
-    //     new_subscriber,
-    //     &base_url.0,
-    //     &subscription_token,
-    // )
-    // .await?;
-
-    transaction
-        .commit()
-        .await
-        .context("Failed to commit the SQL transaction to store a new subscriber")?;
-
-    let environment: Environment = std::env::var("APP_ENVIRONMENT")
-        .unwrap_or_else(|_| "local".into())
-        .try_into()
-        .expect("Failed to parse APP_ENVIRONMENT");
-
-    match environment {
-        Environment::Testing => {
-            let content = format!(
-                "/subscriptions/confirm?subscription_token={}",
-                &subscription_token
-            );
-
-            let request_body = TestResponse {
-                from: email_client.from.as_ref().to_string(),
-                to: new_subscriber.email.as_ref().to_string(),
-                subject: "New subscriber".into(),
-                text: content.into(),
-            };
-
-            return Ok(HttpResponse::Ok().json(request_body));
-        }
-        _ => {
-            send_confirmation_email(
-                &email_client,
-                new_subscriber,
-                &base_url.0,
-                &subscription_token,
-            )
-            .await?;
-
+    match send_confirmation_email(
+        &email_client,
+        new_subscriber,
+        &base_url.0,
+        &subscription_token,
+    )
+    .await
+    {
+        Ok(_) => {
+            transaction
+                .commit()
+                .await
+                .context("Failed to commit the SQL transaction to store a new subscirber");
             return Ok(HttpResponse::Ok().finish());
+        }
+        Err(err) => {
+            transaction
+                .rollback()
+                .await
+                .context("Failed to rollback the SQL transaction to store a new subscriber");
+            return Err(SubscribeError::UnexpectedError(err.into()));
         }
     };
 }
