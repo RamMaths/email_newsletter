@@ -1,10 +1,7 @@
 use crate::error_handling::StoreTokenError;
 use crate::error_handling::SubscribeError;
 use crate::templates;
-use crate::{
-    configuration::Environment, domain::NewSubscriber, email_client::EmailClient,
-    email_client::TestResponse, startup::ApplicationBaseUrl,
-};
+use crate::{domain::NewSubscriber, email_client::EmailClient, startup::ApplicationBaseUrl};
 use actix_web::{web, HttpResponse};
 use anyhow::Context;
 use chrono::Utc;
@@ -82,29 +79,21 @@ pub async fn subscribe(
             .context("Failed to store the confirmation token in the database")?;
     }
 
-    match send_confirmation_email(
+    transaction
+        .commit()
+        .await
+        .context("Failed to commit the SQL transaction to store a new subscirber")?;
+
+    send_confirmation_email(
         &email_client,
         new_subscriber,
         &base_url.0,
         &subscription_token,
     )
     .await
-    {
-        Ok(_) => {
-            transaction
-                .commit()
-                .await
-                .context("Failed to commit the SQL transaction to store a new subscirber");
-            return Ok(HttpResponse::Ok().finish());
-        }
-        Err(err) => {
-            transaction
-                .rollback()
-                .await
-                .context("Failed to rollback the SQL transaction to store a new subscriber");
-            return Err(SubscribeError::UnexpectedError(err.into()));
-        }
-    };
+    .context("Failed to send the email to the user")?;
+
+    Ok(HttpResponse::Ok().finish())
 }
 
 #[tracing::instrument(
@@ -205,13 +194,13 @@ pub async fn send_confirmation_email(
 
     email_client
         .send_email(
-            new_subscriber.email,
+            &new_subscriber.email,
             "Welcome!",
-            &html,
             &format!(
                 "Welcome to our newsletter!\nVisit {} to confirm your subscription.",
                 confirmation_link
             ),
+            &html,
         )
         .await
         .context("Failed to send confirmation email to the user")?;

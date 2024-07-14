@@ -8,6 +8,6 @@ database:
   password: "password"
   database_name: "newsletter"
 email_client:
-  api_url: "https://sandbox.api.mailtrap.io/api/send/2755270"
+  api_url: "https://sandbox.api.mailtrap.io"
   api_key: "06317472283fda0dc9965a525aeb539f"
   api_email: "ramses@dagatech.solutions"

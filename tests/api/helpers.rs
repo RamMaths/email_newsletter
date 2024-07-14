@@ -25,12 +25,45 @@ impl TestApp {
 
     pub async fn post_newsletters(&self, body: serde_json::Value) -> reqwest::Response {
         let url = format!("{}/newsletters", &self.address);
+        let (username, password) = self.test_user().await;
         reqwest::Client::new()
             .post(&url)
-            .json(&body)
+            .header("Content-type", "application/json")
+            .basic_auth(username, Some(password))
+            .body(body.to_string())
             .send()
             .await
             .expect("Failed to execute request.")
+    }
+
+    pub fn get_confirmation_links(&self, email_request: &wiremock::Request) -> String {
+        let body: serde_json::Value = serde_json::from_slice(&email_request.body).unwrap();
+
+        // Extract the link from one of the request fields.
+        let get_link = |s: &str| {
+            let links: Vec<_> = linkify::LinkFinder::new()
+                .links(s)
+                .filter(|l| *l.kind() == linkify::LinkKind::Url)
+                .collect();
+            assert_eq!(links.len(), 1);
+            let raw_link = links[0].as_str().to_owned();
+            let mut confirmation_link = reqwest::Url::parse(&raw_link).unwrap();
+            // Let's make sure we don't call random APIs on the web
+            assert_eq!(confirmation_link.host_str().unwrap(), "127.0.0.1");
+            confirmation_link.set_port(Some(self.port)).unwrap();
+            confirmation_link
+        };
+
+        let plain_text = get_link(body["text"].as_str().unwrap());
+        plain_text.to_string()
+    }
+
+    pub async fn test_user(&self) -> (String, String) {
+        let row = sqlx::query!("SELECT username, password FROM users LIMIT 1")
+            .fetch_one(&self.db_pool)
+            .await
+            .expect("Failed to create test users.");
+        (row.username, row.password)
     }
 }
 
@@ -51,12 +84,14 @@ pub async fn spawn_app() -> TestApp {
     Lazy::force(&TRAICING);
 
     let email_server = MockServer::start().await;
+    println!("{}", &email_server.uri());
 
     let configuration = {
         let mut c = email_newsletter::configuration::get_configuration()
             .expect("Failed to get the configuration file");
         c.database.database_name = Uuid::new_v4().to_string();
         c.application.port = 0;
+        c.application.base_url = "http://127.0.0.1".to_string();
         // Use the mock server as email API
         c.email_client.api_url = email_server.uri();
         c
@@ -68,14 +103,21 @@ pub async fn spawn_app() -> TestApp {
         .await
         .expect("Failed to build the server");
     let application_port = application.port();
-    let address = format!("http://127.0.0.1:{}", &application_port);
+    let address = format!(
+        "{}:{}",
+        &configuration.application.base_url, &application_port
+    );
     let _ = tokio::spawn(application.run_until_stopped());
+
+    let db_pool = get_connection_pool(&configuration.database);
+
+    create_test_user(&db_pool).await;
 
     //We return the application address to the caller
     TestApp {
         address,
         port: application_port,
-        db_pool: get_connection_pool(&configuration.database),
+        db_pool,
         email_server,
     }
 }
@@ -101,4 +143,16 @@ async fn configure_database(config: &DatabaseSettings) -> PgPool {
         .expect("Failed to migrate the database");
 
     connection_pool
+}
+
+pub async fn create_test_user(pool: &PgPool) {
+    sqlx::query!(
+        "INSERT INTO users(user_id, username, password) VALUES($1, $2, $3)",
+        Uuid::new_v4(),
+        Uuid::new_v4().to_string(),
+        Uuid::new_v4().to_string()
+    )
+    .execute(pool)
+    .await
+    .expect("Failed to create test users");
 }

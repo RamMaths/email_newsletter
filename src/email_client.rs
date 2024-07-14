@@ -1,5 +1,5 @@
 use crate::domain::SubscriberEmail;
-use reqwest::Client;
+use reqwest::{Client, Url};
 use secrecy::{ExposeSecret, Secret};
 use serde_json::json;
 
@@ -16,23 +16,27 @@ pub struct EmailClient {
     pub api_url: String,
     pub api_email: SubscriberEmail,
     pub api_key: Secret<String>,
+    pub http_client: Client,
 }
 
 impl EmailClient {
     pub fn new(api_url: String, api_email: SubscriberEmail, api_key: Secret<String>) -> Self {
+        let client = Client::new();
+
         Self {
             api_url,
             api_email,
             api_key,
+            http_client: client,
         }
     }
     pub async fn send_email(
         &self,
-        recipient: SubscriberEmail,
+        recipient: &SubscriberEmail,
         subject: &str,
         text_content: &str,
         html_content: &str,
-    ) -> Result<(), reqwest::Error> {
+    ) -> Result<(), anyhow::Error> {
         //Defining the email
         let email_payload = json!({
             "from": {"email" : "ramses.hdzven@gmail.com"},
@@ -42,9 +46,11 @@ impl EmailClient {
             "html": html_content
         });
 
-        let client = Client::new();
-        let response = client
-            .post(&self.api_url)
+        let url = Url::parse(&self.api_url)?.join("/api/send/2755270")?;
+
+        let response = self
+            .http_client
+            .post(url)
             .header(
                 "Authorization",
                 format!("Bearer {}", &self.api_key.expose_secret()),
@@ -75,7 +81,7 @@ mod tests {
         );
         email_client
             .send_email(
-                SubscriberEmail::parse("ram.hdzven@gmail.com".to_string())
+                &SubscriberEmail::parse("ram.hdzven@gmail.com".to_string())
                     .expect("Couldn't parse the email"),
                 "Hello world",
                 "Hello as well",
