@@ -38,6 +38,7 @@ tera = "1.19.1"
 thiserror = "1"
 anyhow = "1.0.86"
 base64 = "=0.21"
+sha3 = "=0.9"
 
 [dependencies.reqwest]
 version = "0.11"

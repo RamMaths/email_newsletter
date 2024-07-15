@@ -7,7 +7,7 @@ use wiremock::{Mock, ResponseTemplate};
 
 #[tokio::test]
 async fn subscribing_through_smtp() {
-    let app = spawn_app().await;
+    let app = TestApp::spawn_app().await;
     let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
 
     // Creating a new subscriber for the first time
@@ -43,7 +43,7 @@ async fn subscribing_through_smtp() {
 
 #[tokio::test]
 async fn inserting_a_subscriber_twice() {
-    let app = spawn_app().await;
+    let app = TestApp::spawn_app().await;
     let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
 
     // Creating a new subscriber for the first time
@@ -89,7 +89,7 @@ async fn inserting_a_subscriber_twice() {
 
 #[tokio::test]
 async fn using_a_confirmation_token_twice_returns_409() {
-    let app = spawn_app().await;
+    let app = TestApp::spawn_app().await;
     let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
 
     // Creating a new subscriber for the first time
@@ -120,7 +120,7 @@ async fn using_a_confirmation_token_twice_returns_409() {
 #[tokio::test]
 async fn subscribe_fails_if_there_is_a_fatal_database_error() {
     // Arrange
-    let app = spawn_app().await;
+    let app = TestApp::spawn_app().await;
     let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
     // Sabotage the database
     sqlx::query!("ALTER TABLE subscriptions DROP COLUMN email;",)
@@ -135,7 +135,7 @@ async fn subscribe_fails_if_there_is_a_fatal_database_error() {
 
 #[tokio::test]
 async fn newsletters_are_not_delivered_to_unconfirmed_subscribers() {
-    let app = spawn_app().await;
+    let app = TestApp::spawn_app().await;
     newsletter::create_unconfirmed_subscriber(&app).await;
 
     Mock::given(any())

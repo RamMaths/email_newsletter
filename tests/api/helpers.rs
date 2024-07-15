@@ -1,18 +1,77 @@
 use email_newsletter::startup::*;
 use email_newsletter::{configuration::DatabaseSettings, telemetry::*};
 use once_cell::sync::Lazy;
+use sha3::Digest;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use uuid::Uuid;
 use wiremock::MockServer;
+
+static TRAICING: Lazy<()> = Lazy::new(|| {
+    let default_filter_level = "info".to_string();
+    let subscriber_name = "test".to_string();
+
+    if std::env::var("TEST_LOG").is_ok() {
+        let subscriber = get_subscriber(subscriber_name, default_filter_level, std::io::stdout);
+        init_subscriber(subscriber);
+    } else {
+        let subscriber = get_subscriber(subscriber_name, default_filter_level, std::io::sink);
+        init_subscriber(subscriber);
+    }
+});
 
 pub struct TestApp {
     pub address: String,
     pub port: u16,
     pub db_pool: PgPool,
     pub email_server: MockServer,
+    pub test_user: TestUser,
 }
 
 impl TestApp {
+    pub async fn spawn_app() -> Self {
+        Lazy::force(&TRAICING);
+
+        let email_server = MockServer::start().await;
+        println!("{}", &email_server.uri());
+
+        let configuration = {
+            let mut c = email_newsletter::configuration::get_configuration()
+                .expect("Failed to get the configuration file");
+            c.database.database_name = Uuid::new_v4().to_string();
+            c.application.port = 0;
+            c.application.base_url = "http://127.0.0.1".to_string();
+            // Use the mock server as email API
+            c.email_client.api_url = email_server.uri();
+            c
+        };
+
+        configure_database(&configuration.database).await;
+
+        let application = Application::build(configuration.clone())
+            .await
+            .expect("Failed to build the server");
+        let application_port = application.port();
+        let address = format!(
+            "{}:{}",
+            &configuration.application.base_url, &application_port
+        );
+        let _ = tokio::spawn(application.run_until_stopped());
+
+        let db_pool = get_connection_pool(&configuration.database);
+
+        let test_user = TestUser::generate();
+        test_user.store(&db_pool).await;
+
+        //We return the application address to the caller
+        TestApp {
+            address,
+            port: application_port,
+            db_pool,
+            email_server,
+            test_user,
+        }
+    }
+
     pub async fn post_subscriptions(&self, body: String) -> reqwest::Response {
         reqwest::Client::new()
             .post(&format!("{}/subscriptions", &self.address))
@@ -24,12 +83,10 @@ impl TestApp {
     }
 
     pub async fn post_newsletters(&self, body: serde_json::Value) -> reqwest::Response {
-        let url = format!("{}/newsletters", &self.address);
-        let (username, password) = self.test_user().await;
         reqwest::Client::new()
-            .post(&url)
+            .post(&format!("{}/newsletters", &self.address))
             .header("Content-type", "application/json")
-            .basic_auth(username, Some(password))
+            .basic_auth(&self.test_user.username, Some(&self.test_user.password))
             .body(body.to_string())
             .send()
             .await
@@ -57,72 +114,40 @@ impl TestApp {
         let plain_text = get_link(body["text"].as_str().unwrap());
         plain_text.to_string()
     }
-
-    pub async fn test_user(&self) -> (String, String) {
-        let row = sqlx::query!("SELECT username, password FROM users LIMIT 1")
-            .fetch_one(&self.db_pool)
-            .await
-            .expect("Failed to create test users.");
-        (row.username, row.password)
-    }
 }
 
-static TRAICING: Lazy<()> = Lazy::new(|| {
-    let default_filter_level = "info".to_string();
-    let subscriber_name = "test".to_string();
+pub struct TestUser {
+    pub user_id: Uuid,
+    pub username: String,
+    pub password: String,
+}
 
-    if std::env::var("TEST_LOG").is_ok() {
-        let subscriber = get_subscriber(subscriber_name, default_filter_level, std::io::stdout);
-        init_subscriber(subscriber);
-    } else {
-        let subscriber = get_subscriber(subscriber_name, default_filter_level, std::io::sink);
-        init_subscriber(subscriber);
+impl TestUser {
+    pub fn generate() -> Self {
+        Self {
+            user_id: Uuid::new_v4(),
+            username: Uuid::new_v4().to_string(),
+            password: Uuid::new_v4().to_string(),
+        }
     }
-});
 
-pub async fn spawn_app() -> TestApp {
-    Lazy::force(&TRAICING);
+    async fn store(&self, pool: &PgPool) {
+        let password_hash = sha3::Sha3_256::digest(self.password.as_bytes());
+        let password_hash = format!("{:x}", password_hash);
 
-    let email_server = MockServer::start().await;
-    println!("{}", &email_server.uri());
-
-    let configuration = {
-        let mut c = email_newsletter::configuration::get_configuration()
-            .expect("Failed to get the configuration file");
-        c.database.database_name = Uuid::new_v4().to_string();
-        c.application.port = 0;
-        c.application.base_url = "http://127.0.0.1".to_string();
-        // Use the mock server as email API
-        c.email_client.api_url = email_server.uri();
-        c
-    };
-
-    configure_database(&configuration.database).await;
-
-    let application = Application::build(configuration.clone())
+        sqlx::query!(
+            "INSERT INTO users(user_id, username, password) VALUES($1, $2, $3)",
+            &self.user_id,
+            &self.username,
+            password_hash
+        )
+        .execute(pool)
         .await
-        .expect("Failed to build the server");
-    let application_port = application.port();
-    let address = format!(
-        "{}:{}",
-        &configuration.application.base_url, &application_port
-    );
-    let _ = tokio::spawn(application.run_until_stopped());
-
-    let db_pool = get_connection_pool(&configuration.database);
-
-    create_test_user(&db_pool).await;
-
-    //We return the application address to the caller
-    TestApp {
-        address,
-        port: application_port,
-        db_pool,
-        email_server,
+        .expect("Failed to create test users");
     }
 }
 
-async fn configure_database(config: &DatabaseSettings) -> PgPool {
+async fn configure_database(config: &DatabaseSettings) -> PgConnection {
     let mut connection = PgConnection::connect_with(&config.without_db())
         .await
         .expect("Failed to connect to Postgres");
@@ -142,17 +167,5 @@ async fn configure_database(config: &DatabaseSettings) -> PgPool {
         .await
         .expect("Failed to migrate the database");
 
-    connection_pool
-}
-
-pub async fn create_test_user(pool: &PgPool) {
-    sqlx::query!(
-        "INSERT INTO users(user_id, username, password) VALUES($1, $2, $3)",
-        Uuid::new_v4(),
-        Uuid::new_v4().to_string(),
-        Uuid::new_v4().to_string()
-    )
-    .execute(pool)
-    .await
-    .expect("Failed to create test users");
+    connection
 }

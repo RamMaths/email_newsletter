@@ -1,11 +1,11 @@
-use crate::helpers::{spawn_app, TestApp};
+use crate::helpers::TestApp;
 use reqwest::Url;
 use wiremock::{matchers::method, matchers::path, Mock, ResponseTemplate};
 
 #[tokio::test]
 async fn requests_missing_authorization_are_rejected() {
     // Arrange
-    let app = spawn_app().await;
+    let app = TestApp::spawn_app().await;
     let response = reqwest::Client::new()
         .post(&format!("{}/newsletters", &app.address))
         .json(&serde_json::json!({
@@ -29,7 +29,7 @@ async fn requests_missing_authorization_are_rejected() {
 #[tokio::test]
 async fn newsletters_returns_400_for_invalid_data() {
     // Arrange
-    let app = spawn_app().await;
+    let app = TestApp::spawn_app().await;
 
     let test_cases = vec![
         (
@@ -60,7 +60,7 @@ async fn newsletters_returns_400_for_invalid_data() {
 
 #[tokio::test]
 async fn newsletters_are_delivered_to_confirmed_subscribers() {
-    let app = spawn_app().await;
+    let app = TestApp::spawn_app().await;
     create_confirmed_subscriber(&app).await;
 
     Mock::given(path("/api/send/2755270"))
@@ -87,7 +87,7 @@ async fn newsletters_are_delivered_to_confirmed_subscribers() {
 
 #[tokio::test]
 async fn newsletters_are_not_delivered_to_unconfirmed_subscribers() {
-    let app = spawn_app().await;
+    let app = TestApp::spawn_app().await;
     create_unconfirmed_subscriber(&app).await;
 
     let news_letter_request_body = serde_json::json!({
